@@ -188,9 +188,61 @@ machine today, that step would be missing. Fixing this (e.g. a
 
 ---
 
+## 2026-07-07 — Added schema.sql to close the reproducibility gap
+
+**Problem being fixed:** the previous entry's uniqueness rule was applied
+directly with `psql` against the live database — nothing in the repo
+recorded the table structure, so a fresh machine had no way to reproduce it.
+
+1. **Wrote `schema.sql`**, a single file that creates the `issues` table
+   from nothing, including the same unique constraint added earlier:
+   ```sql
+   CREATE TABLE IF NOT EXISTS issues (
+       id SERIAL PRIMARY KEY,
+       repo TEXT NOT NULL,
+       issue_number INTEGER NOT NULL,
+       title TEXT NOT NULL,
+       url TEXT NOT NULL,
+       fetched_at TIMESTAMP DEFAULT now(),
+       UNIQUE (repo, issue_number)
+   );
+   ```
+   `SERIAL PRIMARY KEY` means "auto-incrementing whole number, and no two
+   rows can share one" — this is what Postgres was already doing for `id`
+   behind the scenes; writing it explicitly means a new setup gets the
+   same behavior.
+
+2. **Tested it without touching the real data.** Couldn't create a whole
+   new throwaway database (the Postgres user here isn't allowed to run
+   `CREATE DATABASE`), so instead created a temporary *schema* — think of
+   it as a separate folder inside the same database — ran `schema.sql`
+   inside it, confirmed the resulting table matched the real one exactly
+   (same columns, same primary key, same unique constraint), then deleted
+   the temporary schema:
+   ```
+   psql -d oss_dashboard <<'EOF'
+   CREATE SCHEMA test_schema;
+   SET search_path TO test_schema;
+   \i schema.sql
+   \d test_schema.issues
+   DROP SCHEMA test_schema CASCADE;
+   EOF
+   ```
+
+3. **Committed and pushed:**
+   ```
+   git add schema.sql
+   git commit -m "Add schema.sql to reproduce the database from scratch"
+   git push
+   ```
+
+**Result at this point:** anyone (including future-you on a new machine)
+can now run `createdb oss_dashboard && psql -d oss_dashboard -f schema.sql`
+and get a database that behaves identically to the one already in use.
+
+---
+
 ## What's next (not started yet)
 
-- Possibly add a `schema.sql` documenting the table structure/constraints
-  so a fresh machine can reproduce the database from scratch.
 - The dashboard itself — a web page that reads from the `issues` table and
   displays them, instead of only looking at raw rows via `psql`.
