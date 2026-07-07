@@ -311,9 +311,61 @@ issue currently stored in the database.
 
 ---
 
+## 2026-07-07 — Added search and repo filter to the dashboard
+
+The dashboard listed every issue with no way to narrow it down. Added a
+filter bar to the top of the page:
+
+1. **Updated `app.py`** to read two optional query-string parameters —
+   `q` (keyword) and `repo` (exact repo name) — and build the SQL query
+   accordingly:
+   ```python
+   q = request.args.get("q", "").strip()
+   repo = request.args.get("repo", "").strip()
+   ...
+   if q:
+       where_clauses.append("title ILIKE %s")
+       params.append(f"%{q}%")
+   if repo:
+       where_clauses.append("repo = %s")
+       params.append(repo)
+   ```
+   `ILIKE` is Postgres's case-insensitive `LIKE`, so searching "bug" also
+   matches "Bug". The query parameters are passed separately from the SQL
+   string (not string-formatted into it), which is what keeps this safe
+   from SQL injection.
+
+   Also added a query for the distinct list of repos (`SELECT DISTINCT
+   repo FROM issues`) so the repo dropdown always shows every tracked
+   repo, even when a filter is currently narrowing the table below it.
+
+2. **Updated `templates/index.html`** to add a form with a text input
+   (`q`) and a `<select>` dropdown (`repo`), both submitting as a GET
+   request to `/`. Using GET (rather than POST) means filtered views are
+   plain URLs like `/?repo=vuejs/vue&q=bug` — bookmarkable and shareable.
+   The current filter values are echoed back into the input/dropdown
+   (`value="{{ q }}"`, `{% if r == selected_repo %}selected{% endif %}`)
+   so the form doesn't reset itself after filtering.
+
+3. **Tested it end-to-end** against the live database rather than just
+   reading the code:
+   ```
+   curl "http://127.0.0.1:5000/?repo=vuejs/vue"   # → 9 of 38 issues, only vuejs/vue rows
+   curl "http://127.0.0.1:5000/?q=bug"            # → 6 of 38 issues, case-insensitive match
+   curl "http://127.0.0.1:5000/?q=zzzznomatch"    # → 0 issues, no crash
+   ```
+   Confirmed counts narrowed correctly, the "wrong" repo's rows were
+   absent from a filtered result, and the dropdown re-selected the active
+   repo after filtering.
+
+**Result at this point:** visiting `/` still shows everything; visiting
+`/?q=<keyword>` and/or `/?repo=<owner/repo>` narrows the table to
+matching issues, with the filter bar reflecting the current search.
+
+---
+
 ## What's next (not started yet)
 
-- Search/filter on the dashboard (by repo, keyword, etc.).
 - A way to trigger `fetch_issues.py` from the dashboard itself instead of
   running it manually from the terminal.
 - Deploying the dashboard somewhere so it's not just local-only.

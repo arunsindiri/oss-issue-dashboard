@@ -11,10 +11,25 @@
         th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
         th { color: #666; font-weight: 600; }
         .repo { color: #666; font-size: 0.9em; }
+        form.filters { margin-bottom: 1.5rem; display: flex; gap: 0.5rem; }
+        form.filters input, form.filters select { padding: 0.4rem; font-size: 1em; }
+        form.filters input[type="text"] { flex: 1; }
     </style>
 </head>
 <body>
     <h1>OSS Issue Dashboard</h1>
+
+    <form class="filters" method="get" action="/">
+        <input type="text" name="q" placeholder="Search titles..." value="{{ q }}">
+        <select name="repo">
+            <option value="">All repos</option>
+            {% for r in repos %}
+            <option value="{{ r }}" {% if r == selected_repo %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Filter</button>
+    </form>
+
     <p class="count">{{ issues|length }} issues tracked</p>
     <table>
         <thead>
