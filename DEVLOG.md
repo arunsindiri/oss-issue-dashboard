@@ -242,7 +242,78 @@ and get a database that behaves identically to the one already in use.
 
 ---
 
+## 2026-07-07 — Built the first working dashboard UI
+
+This is the piece the project is actually named for — until now, the only
+way to see the data was querying Postgres directly with `psql`.
+
+1. **Installed Flask** (a lightweight Python web framework) into the venv:
+   ```
+   pip install flask
+   ```
+   Flask lets a Python script respond to web page requests — when a
+   browser visits a URL, a Python function runs and returns HTML.
+
+2. **Recorded the new dependencies** in `requirements.txt` (Flask itself
+   plus the smaller packages it depends on: Jinja2, Werkzeug, click,
+   itsdangerous, blinker, MarkupSafe) by running `pip freeze` and merging
+   the new entries in alphabetically with the existing ones.
+
+3. **Wrote `app.py`**, a small Flask app with one page (`/`):
+   ```python
+   @app.route("/")
+   def index():
+       conn = psycopg2.connect(dbname="oss_dashboard")
+       cur = conn.cursor()
+       cur.execute("SELECT repo, issue_number, title, url FROM issues ORDER BY repo, issue_number DESC")
+       rows = cur.fetchall()
+       ...
+       return render_template("index.html", issues=issues)
+   ```
+   `@app.route("/")` means "when someone visits the home page, run this
+   function." It queries every issue out of Postgres, turns each row into
+   a small dictionary, and hands the whole list to a template to turn into
+   HTML.
+
+4. **Wrote `templates/index.html`**, an HTML page using Jinja2 templating
+   (Flask's default templating language) to loop over the issues and
+   build a table row per issue:
+   ```
+   {% for issue in issues %}
+   <tr>...</tr>
+   {% endfor %}
+   ```
+   Jinja2 automatically escapes special characters in the data (e.g. a
+   title containing a quote mark becomes `&#34;`) so nothing in an issue's
+   title can break the page's HTML or inject a script — this is a security
+   basic called "output escaping."
+
+5. **Tested it end-to-end** rather than just trusting the code looked
+   right:
+   ```
+   python app.py &          # starts the dev server in the background
+   curl http://127.0.0.1:5000/
+   ```
+   Confirmed the page rendered all 38 tracked issues across all three
+   repos, with working links and properly escaped titles, then stopped
+   the server.
+
+6. **Committed and pushed:**
+   ```
+   git add app.py templates/index.html requirements.txt
+   git commit -m "Add Flask dashboard UI to browse tracked issues"
+   git push
+   ```
+
+**Result at this point:** running `python app.py` and visiting
+`http://127.0.0.1:5000/` in a browser shows a real, live table of every
+issue currently stored in the database.
+
+---
+
 ## What's next (not started yet)
 
-- The dashboard itself — a web page that reads from the `issues` table and
-  displays them, instead of only looking at raw rows via `psql`.
+- Search/filter on the dashboard (by repo, keyword, etc.).
+- A way to trigger `fetch_issues.py` from the dashboard itself instead of
+  running it manually from the terminal.
+- Deploying the dashboard somewhere so it's not just local-only.
