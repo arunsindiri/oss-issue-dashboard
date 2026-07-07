@@ -364,6 +364,86 @@ matching issues, with the filter bar reflecting the current search.
 
 ---
 
+## 2026-07-07 — Made the filter live with CSS + JavaScript
+
+The filter bar worked, but only via a full page reload per search. Added
+real CSS (external stylesheet) and JavaScript (a JSON API + fetch-based
+live filtering) on top of it, keeping the existing no-JS behavior as a
+fallback rather than replacing it.
+
+1. **Moved the styling into `static/style.css`** (Flask serves anything in
+   a `static/` folder automatically at `/static/...`). Beyond the original
+   look, added: hover highlighting on table rows, a sticky table header,
+   focus rings on the search input/dropdown, and a `prefers-color-scheme:
+   dark` block so the page follows the OS/browser's dark mode instead of
+   staying white-on-black-text always.
+
+2. **Added a JSON API endpoint, `/api/issues`**, by pulling the filtering
+   logic in `app.py` out into two small helper functions (`get_repos`,
+   `get_issues`) shared by both routes:
+   ```python
+   @app.route("/api/issues")
+   def api_issues():
+       q = request.args.get("q", "").strip()
+       repo = request.args.get("repo", "").strip()
+       ...
+       issues = get_issues(cur, q, repo)
+       return jsonify(issues=issues)
+   ```
+   This does the exact same `ILIKE`/`repo =` filtering as the `/` route,
+   just returning JSON instead of an HTML page.
+
+   **Why an API call instead of just hiding table rows in JS:** the first
+   draft of this filtered by hiding/showing rows already present in the
+   DOM. That breaks the moment someone loads a bookmarked filtered URL
+   (say `/?repo=vuejs/vue`) and then switches the dropdown to a different
+   repo — the other repo's rows were never sent to the browser, so it'd
+   incorrectly show zero results. Fetching fresh from `/api/issues` on
+   every filter change means the browser is never guessing from a partial
+   page — the server is always the source of truth.
+
+3. **Wrote `static/app.js`** to progressively enhance the existing form:
+   ```js
+   qInput.addEventListener("input", () => {
+       clearTimeout(debounceTimer);
+       debounceTimer = setTimeout(applyFilter, 200);
+   });
+   repoSelect.addEventListener("change", applyFilter);
+   form.addEventListener("submit", (event) => event.preventDefault());
+   ```
+   Typing in the search box waits 200ms after the last keystroke
+   ("debouncing") before calling `/api/issues`, so it's not firing a
+   request per letter typed. Changing the repo dropdown filters
+   immediately. The table body is rebuilt from the JSON response using
+   `textContent` (never `innerHTML`), so an issue title can never be
+   interpreted as HTML/script — the same escaping guarantee Jinja2 gave
+   the server-rendered version.
+
+   Because the form's normal GET submission still works underneath this
+   (this is "progressive enhancement," not a replacement), the dashboard
+   still functions with JavaScript disabled — it just goes back to a full
+   page reload per search instead of live filtering.
+
+4. **Tested it end-to-end**, both the plain page and the new API:
+   ```
+   curl http://127.0.0.1:5000/static/style.css   # → 200
+   curl http://127.0.0.1:5000/static/app.js      # → 200
+   curl http://127.0.0.1:5000/                   # → still all 38 issues, unfiltered
+   curl "http://127.0.0.1:5000/api/issues?repo=vuejs/vue"      # → 9 issues, all vuejs/vue
+   curl "http://127.0.0.1:5000/api/issues?q=bug"               # → 6 issues, case-insensitive
+   curl "http://127.0.0.1:5000/api/issues?q=zzzznomatch"       # → {"issues": []}, no crash
+   ```
+   No headless browser is available in this environment to click through
+   the live JS interaction directly, so the actual "type and watch the
+   table update" behavior still needs a manual check in a real browser.
+
+**Result at this point:** the dashboard now has real CSS (dark mode,
+hover states, sticky header) and real JavaScript (instant, debounced
+search-as-you-type and repo filtering with no page reload), while still
+working correctly with JavaScript turned off.
+
+---
+
 ## What's next (not started yet)
 
 - A way to trigger `fetch_issues.py` from the dashboard itself instead of

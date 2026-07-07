@@ -1,24 +1,17 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import psycopg2
 
 app = Flask(__name__)
 
 
-@app.route("/")
-def index():
-    # Search box (?q=) and repo dropdown (?repo=), both optional.
-    q = request.args.get("q", "").strip()
-    repo = request.args.get("repo", "").strip()
-
-    # Same local-user connection style used in fetch_issues.py.
-    conn = psycopg2.connect(dbname="oss_dashboard")
-    cur = conn.cursor()
-
+def get_repos(cur):
     # The dropdown needs every repo we track, regardless of the current
     # filters, so it's a separate query from the (possibly filtered) list.
     cur.execute("SELECT DISTINCT repo FROM issues ORDER BY repo")
-    repos = [row[0] for row in cur.fetchall()]
+    return [row[0] for row in cur.fetchall()]
 
+
+def get_issues(cur, q, repo):
     where_clauses = []
     params = []
 
@@ -44,17 +37,50 @@ def index():
         """,
         params,
     )
-    rows = cur.fetchall()
+
+    return [
+        {"repo": r, "number": number, "title": title, "url": url}
+        for r, number, title, url in cur.fetchall()
+    ]
+
+
+@app.route("/")
+def index():
+    # Search box (?q=) and repo dropdown (?repo=), both optional.
+    q = request.args.get("q", "").strip()
+    repo = request.args.get("repo", "").strip()
+
+    # Same local-user connection style used in fetch_issues.py.
+    conn = psycopg2.connect(dbname="oss_dashboard")
+    cur = conn.cursor()
+
+    repos = get_repos(cur)
+    issues = get_issues(cur, q, repo)
 
     cur.close()
     conn.close()
 
-    issues = [
-        {"repo": r, "number": number, "title": title, "url": url}
-        for r, number, title, url in rows
-    ]
-
     return render_template("index.html", issues=issues, repos=repos, q=q, selected_repo=repo)
+
+
+@app.route("/api/issues")
+def api_issues():
+    # JSON version of the same filtered query, used by static/app.js so the
+    # search box and repo dropdown can update the table live without a full
+    # page reload. Always the source of truth for what matches a filter —
+    # the browser never has to guess from rows already on the page.
+    q = request.args.get("q", "").strip()
+    repo = request.args.get("repo", "").strip()
+
+    conn = psycopg2.connect(dbname="oss_dashboard")
+    cur = conn.cursor()
+
+    issues = get_issues(cur, q, repo)
+
+    cur.close()
+    conn.close()
+
+    return jsonify(issues=issues)
 
 
 if __name__ == "__main__":

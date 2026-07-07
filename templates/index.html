@@ -3,18 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>OSS Issue Dashboard</title>
-    <style>
-        body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-        h1 { margin-bottom: 0.25rem; }
-        .count { color: #666; margin-bottom: 1.5rem; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
-        th { color: #666; font-weight: 600; }
-        .repo { color: #666; font-size: 0.9em; }
-        form.filters { margin-bottom: 1.5rem; display: flex; gap: 0.5rem; }
-        form.filters input, form.filters select { padding: 0.4rem; font-size: 1em; }
-        form.filters input[type="text"] { flex: 1; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <h1>OSS Issue Dashboard</h1>
@@ -30,7 +19,7 @@
         <button type="submit">Filter</button>
     </form>
 
-    <p class="count">{{ issues|length }} issues tracked</p>
+    <p class="count" id="count">{{ issues|length }} issues tracked</p>
     <table>
         <thead>
             <tr>
@@ -39,15 +28,24 @@
                 <th>Title</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="issues-body">
             {% for issue in issues %}
             <tr>
                 <td class="repo">{{ issue.repo }}</td>
                 <td>{{ issue.number }}</td>
-                <td><a href="{{ issue.url }}" target="_blank" rel="noopener">{{ issue.title }}</a></td>
+                <td><a class="title" href="{{ issue.url }}" target="_blank" rel="noopener">{{ issue.title }}</a></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td class="no-results" colspan="3">No matching issues.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+
+    <!-- Progressive enhancement: the form above already works via a normal
+         GET request with no JS at all. This script takes over to filter
+         live against /api/issues instead, without a full page reload. -->
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>
